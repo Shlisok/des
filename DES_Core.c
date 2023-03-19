@@ -65,7 +65,7 @@ void key_left_permutation(unsigned char *key_28,int count){
 }
 
 //将两个28key合并为长度为48子密钥(*功能待测试)
-void key_merge_subkey(unsigned char *left_key_28,unsigned char *right_key_28,unsigned *subkey){
+void key_merge_subkey(unsigned char *left_key_28,unsigned char *right_key_28,unsigned char *subkey){
     memset(subkey,0,6); //将data内存置0，方便后存入新数据
     for (int i = 0; i < 48; ++i) {
         if (PC_2[i] <= 28) {
@@ -84,5 +84,53 @@ void key_merge_subkey(unsigned char *left_key_28,unsigned char *right_key_28,uns
             subkey[i / 8] |= (bit << (7 - i % 8));
         }
     }
+}
+
+//转置后的56位密钥生成16轮子密钥
+void key_subkeys_generate(unsigned char *key_56,unsigned char subkeys[][6]){
+    //两个长度4字节(28位)的子密钥
+    unsigned char left_key_28[4];
+    unsigned char right_key_28[4];
+
+    for (int i = 0; i < 3; ++i) {
+        //left_key赋值
+        left_key_28[i] |= key_56[i];
+        //right_key赋值，因为28不是8的倍数，需要做拼接
+        right_key_28[i] |= ((key_56[i + 3] << 4) | (key_56[i + 4] >> 4));
+    }
+    //left_key的最后一字节，仅前四位有效值，抹掉低四位
+    left_key_28[3] |= (key_56[3] & 0xF0);
+    //right_key的最后一字节，仅有前四位有效值，左移四位
+    right_key_28[3] |= (key_56[6] << 4);
+
+    for (int i = 0; i < 16; ++i) {
+        //开始移位
+        key_left_permutation(left_key_28,i);
+        key_left_permutation(right_key_28,i);
+        //移位后合并为48位密钥
+        unsigned char subkey[6];
+        key_merge_subkey(left_key_28,right_key_28,subkey);
+        //将生成的子密钥存储到数组中
+        memcpy(subkeys[i],subkey,6);
+    }
+}
+
+//完成函数，传入64位密钥，计算16轮48位密钥（先不考虑奇偶检验位）
+int des_key_generate(unsigned char *key,unsigned char subkeys[][6]){
+    /*
+     * 应有奇偶校验
+     * 因为时间原因先不考虑
+     * 待后期设计密钥生成时再做考虑
+     * return 返回奇偶校验结果
+     * */
+
+    //存储转置后56位密钥
+    unsigned char key_56[7];
+    key_permutation(key,key_56);
+
+    //根据转置后的56位密钥生成16轮密钥
+    key_subkeys_generate(key_56,subkeys);
+
+    return 0;
 }
 

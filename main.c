@@ -3,18 +3,26 @@
 #include "DES_Core.h"
 
 int main() {
-    char string[] = "hel";
-    unsigned char data[sizeof (string)];
-    memcpy(data,string,sizeof (string));
+    char key[] = "hello,w";
+    unsigned char data[sizeof (key)];
+    memcpy(data,key,sizeof (key));
 
-    key_left_permutation(data,1);
-    //debug调试，查看置换是否成功
-    int a = 1;
+    unsigned char subkeys[16][6];
+    des_key_generate(data,subkeys);
 
-    char new_string[sizeof (string)];
-    for (int i = 0; i < sizeof(string); ++i) {
-        new_string[i] = (char)data[i];
+    for (int i = 0; i < 16; i++) {
+        printf("Subkey %d: ", i);
+        for (int j = 0; j < 6; j++) {
+            for (int k = 7; k >= 0; k--) {
+                unsigned char bit = (subkeys[i][j] >> k) & 1;
+                printf("%d", bit);
+            }
+            printf(" ");
+        }
+        printf("\n");
     }
-    printf("%s",new_string);
+
+
+
     return 0;
 }
