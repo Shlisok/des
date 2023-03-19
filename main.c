@@ -3,12 +3,11 @@
 #include "DES_Core.h"
 
 int main() {
-    char string[] = "hello,w";
+    char string[] = "hel";
     unsigned char data[sizeof (string)];
-    unsigned char key[7];
     memcpy(data,string,sizeof (string));
 
-    key_permutation(data,key);
+    key_left_permutation(data,1);
     //debug调试，查看置换是否成功
     int a = 1;
 

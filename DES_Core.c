@@ -43,3 +43,46 @@ void key_permutation(const unsigned char *key,unsigned char *key_56) {
         key_56[i / 8] |= (bit << (7 - i % 8));
     }
 }
+
+//将密钥左移，count是当前轮数，key_28仅前28位为有效位，剩余4位可以考虑做校验位
+void key_left_permutation(unsigned char *key_28,int count){
+    for (int i = 0; i < key_left_table[count]; ++i) {
+        //取下最左边的一位，最后添加到末尾
+        int temp = (key_28[0] >> 7) & 1;
+        for (int j = 0; j < 3; ++j) {
+            //左移一位
+            key_28[j] <<= 1;
+            //取下下个字节的开头
+            int bit = (key_28[j + 1] >> 7) & 1;
+            //补到当前字节的末尾
+            key_28[j] |= bit;
+        }
+        //最后一字节左移一位
+        key_28[3] <<= 1;
+        //将key_28第一位补到最后一位
+        key_28[3] |= (temp << 4);
+    }
+}
+
+//将两个28key合并为长度为48子密钥(*功能待测试)
+void key_merge_subkey(unsigned char *left_key_28,unsigned char *right_key_28,unsigned *subkey){
+    memset(subkey,0,6); //将data内存置0，方便后存入新数据
+    for (int i = 0; i < 48; ++i) {
+        if (PC_2[i] <= 28) {
+            //计算所取位位于第几个字节的第几位
+            int row = (PC_2[i] - 1) / 8;
+            int col = (PC_2[i] - 1) % 8;
+            //取出所要的位
+            int bit = (left_key_28[row] >> (7 - col)) & 1;
+            subkey[i / 8] |= (bit << (7 - i % 8));
+        } else {
+            //计算所取位位于第几个字节的第几位
+            int row = (PC_2[i] - 29) / 8;
+            int col = (PC_2[i] - 29) % 8;
+            //取出所要的位
+            int bit = (right_key_28[row] >> (7 - col)) & 1;
+            subkey[i / 8] |= (bit << (7 - i % 8));
+        }
+    }
+}
+
