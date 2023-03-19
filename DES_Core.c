@@ -134,3 +134,92 @@ int des_key_generate(unsigned char *key,unsigned char subkeys[][6]){
     return 0;
 }
 
+//将32位明文利用E盒进行扩展，扩展为48位
+void F_E_box_permutation(unsigned char *data_32,unsigned char *data_e_48) {
+    memset(data_e_48, 0, 6); //初始化
+    for (int i = 0; i < 48; ++i) {
+        //计算所取位位于第几个字节的第几位
+        int row = (F_E_box[i] - 1) / 8;
+        int col = (F_E_box[i] - 1) / 8;
+        //取出所要的位
+        int bit = (data_32[row] >> (7 - col)) & 1;
+        data_e_48[i / 8] = (bit << (7 - i % 8));
+    }
+}
+
+//将扩展后的48位明文与该轮次子密钥异或计算
+void F_xor_data_key(unsigned char *data_48,unsigned char *subkey,unsigned char *result) {
+    for (int i = 0; i < 6; ++i) {
+        result[i] = data_48[i] ^ subkey[i];
+    }
+}
+
+//将后6位有效值的字节结果送入Sn，计算结果
+void F_S_box_permutation(unsigned char data_6bit,unsigned char *result_4bit,int n) {
+    // 获取S盒对应的行和列
+    int row = ((data_6bit & 0b00100000) >> 4) | (data_6bit & 0b00000001);
+    int col = (data_6bit & 0b00011110) >> 1;
+
+    //找到对应的数据
+    unsigned char value = F_S_box[n][row][col];
+
+    //将result_4bit制0，或上结果，将结果存储在低4位
+    *result_4bit = (*result_4bit & 0b00000000) | (value & 0b00001111);
+}
+
+//将异或后的数据进行S盒处理，生成32位的结果
+void F_S_box_result(unsigned char *data_xored_48bit,unsigned char *result_32bit) {
+    unsigned char data_group[8] = {0}; //初始化
+    unsigned char data_s_result[8] = {0}; //经过S盒计算后的4位，仅存储在第四位，高4位为0
+
+    for (int i = 0; i < 48; ++i) {
+        int row_index = i / 8; //计算原始位置上的字节
+        int col_index = i % 8; //计算原始位置上的位数
+        //取出所要的位
+        int bit = (data_xored_48bit[row_index] >> (7 - col_index)) & 1;
+
+        int row = i / 6; //计算group上的第几个字节
+        int col = i % 6; //计算group上的第几位
+        data_group[row] |= (bit << (5 - col));
+    }
+
+    //传入8个S盒，计算，返回值每个字节只有低4位有效
+    for (int i = 0; i < 8; ++i) {
+        F_S_box_permutation(data_group[i],&data_s_result[i],i);
+    }
+
+
+    memset(result_32bit, 0 ,4); //返回数组初始化
+    for (int i = 0; i < 4; ++i) {
+        //拼接S盒的返回值，每8个字节的有效值拼接成一个字节
+        result_32bit[i] |= ((data_s_result[2 * i] << 4) | (data_s_result[2 * i + 1] & 0b00001111));
+    }
+}
+
+//将S盒输出的32位进行P盒置换
+void F_P_box_permutation(unsigned char *data_s_result,unsigned char *result) {
+    memset(result, 0, 4); //初始化
+    for (int i = 0; i < 32; ++i) {
+        int row = (P_box[i] - 1) / 8;
+        int col = (P_box[i] - 1) % 8;
+        int bit = (data_s_result[row] >> (7 - col)) & 1;
+        result[i / 8] |= (bit << (7 - i % 8));
+    }
+}
+
+//f函数，输入32位的data，计算经过f函数处理后的值
+void F_function(unsigned char *data_32,unsigned char *subkey,unsigned char *result) {
+    unsigned char data_E_48[48]; //经过E盒扩展后的48位数据
+    unsigned char data_xored[48]; //与密钥做异或运算后的48位数据
+    unsigned char data_s_result[32]; //S盒处理后的32位数据
+
+    //先做扩展，将结果存进data_E_48
+    F_E_box_permutation(data_32,data_E_48);
+    //将扩展结果与该轮密钥做异或，结果存储进data_xored
+    F_xor_data_key(data_E_48,subkey,data_xored);
+    //将异或结果送进S盒，结果存进data_s_result
+    F_S_box_result(data_xored,data_s_result);
+    //最后做P盒置换，结果为F函数的最终结果
+    F_P_box_permutation(data_s_result,result);
+}
+
