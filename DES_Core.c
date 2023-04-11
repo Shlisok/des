@@ -1,4 +1,5 @@
 #include <string.h>
+#include <printf.h>
 #include "DES_Core.h"
 #include "DES_Table.h"
 
@@ -94,14 +95,15 @@ void key_subkeys_generate(unsigned char *key_56,unsigned char subkeys[][6]){
 
     for (int i = 0; i < 3; ++i) {
         //left_key赋值
-        left_key_28[i] |= key_56[i];
+        left_key_28[i] = key_56[i];
         //right_key赋值，因为28不是8的倍数，需要做拼接
-        right_key_28[i] |= ((key_56[i + 3] << 4) | (key_56[i + 4] >> 4));
+        right_key_28[i] = ((key_56[i + 3] << 4) | (key_56[i + 4] >> 4));
     }
     //left_key的最后一字节，仅前四位有效值，抹掉低四位
-    left_key_28[3] |= (key_56[3] & 0xF0);
+    unsigned char a = (key_56[3] & 0xF0);
+    left_key_28[3] = (key_56[3] & 0xF0);
     //right_key的最后一字节，仅有前四位有效值，左移四位
-    right_key_28[3] |= (key_56[6] << 4);
+    right_key_28[3] = (key_56[6] << 4);
 
     for (int i = 0; i < 16; ++i) {
         //开始移位
@@ -116,7 +118,7 @@ void key_subkeys_generate(unsigned char *key_56,unsigned char subkeys[][6]){
 }
 
 //完成函数，传入64位密钥，计算16轮48位密钥（先不考虑奇偶检验位）
-int des_key_generate(unsigned char *key,unsigned char subkeys[][6]){
+int des_key_generate(unsigned char *originalKey,unsigned char subkeys[][6]){
     /*
      * 应有奇偶校验
      * 因为时间原因先不考虑
@@ -124,9 +126,16 @@ int des_key_generate(unsigned char *key,unsigned char subkeys[][6]){
      * return 返回奇偶校验结果
      * */
 
-    //存储转置后56位密钥
-    unsigned char key_56[7];
+
+
+    unsigned char key[8]; //不能直接在原始密钥的内存空间上修改
+    unsigned char key_56[7]; //存储转置后56位密钥
+
+    memcpy(key, originalKey, 8); //复制原始密钥
+
+    //转置为56位
     key_permutation(key,key_56);
+
 
     //根据转置后的56位密钥生成16轮密钥
     key_subkeys_generate(key_56,subkeys);
@@ -140,10 +149,10 @@ void F_E_box_permutation(unsigned char *data_32,unsigned char *data_e_48) {
     for (int i = 0; i < 48; ++i) {
         //计算所取位位于第几个字节的第几位
         int row = (F_E_box[i] - 1) / 8;
-        int col = (F_E_box[i] - 1) / 8;
+        int col = (F_E_box[i] - 1) % 8;
         //取出所要的位
         int bit = (data_32[row] >> (7 - col)) & 1;
-        data_e_48[i / 8] = (bit << (7 - i % 8));
+        data_e_48[i / 8] |= (bit << (7 - i % 8));
     }
 }
 
@@ -170,7 +179,7 @@ void F_S_box_permutation(unsigned char data_6bit,unsigned char *result_4bit,int 
 //将异或后的数据进行S盒处理，生成32位的结果
 void F_S_box_result(unsigned char *data_xored_48bit,unsigned char *result_32bit) {
     unsigned char data_group[8] = {0}; //初始化
-    unsigned char data_s_result[8] = {0}; //经过S盒计算后的4位，仅存储在第四位，高4位为0
+    unsigned char data_s_result[8] = {0}; //经过S盒计算后的4位，仅存储在低四位，高4位为0
 
     for (int i = 0; i < 48; ++i) {
         int row_index = i / 8; //计算原始位置上的字节
@@ -184,7 +193,7 @@ void F_S_box_result(unsigned char *data_xored_48bit,unsigned char *result_32bit)
     }
 
     //传入8个S盒，计算，返回值每个字节只有低4位有效
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 8; i++) {
         F_S_box_permutation(data_group[i],&data_s_result[i],i);
     }
 
@@ -192,7 +201,8 @@ void F_S_box_result(unsigned char *data_xored_48bit,unsigned char *result_32bit)
     memset(result_32bit, 0 ,4); //返回数组初始化
     for (int i = 0; i < 4; ++i) {
         //拼接S盒的返回值，每8个字节的有效值拼接成一个字节
-        result_32bit[i] |= ((data_s_result[2 * i] << 4) | (data_s_result[2 * i + 1] & 0b00001111));
+        result_32bit[i] |= (data_s_result[2 * i] << 4);
+        result_32bit[i] |= (data_s_result[2 * i + 1] & 0b00001111);
     }
 }
 
@@ -209,9 +219,9 @@ void F_P_box_permutation(unsigned char *data_s_result,unsigned char *result) {
 
 //f函数，输入32位的data，计算经过f函数处理后的值
 void F_function(unsigned char *data_32,unsigned char *subkey,unsigned char *result) {
-    unsigned char data_E_48[48]; //经过E盒扩展后的48位数据
-    unsigned char data_xored[48]; //与密钥做异或运算后的48位数据
-    unsigned char data_s_result[32]; //S盒处理后的32位数据
+    unsigned char data_E_48[6]; //经过E盒扩展后的48位数据
+    unsigned char data_xored[6]; //与密钥做异或运算后的48位数据
+    unsigned char data_s_result[4]; //S盒处理后的32位数据
 
     //先做扩展，将结果存进data_E_48
     F_E_box_permutation(data_32,data_E_48);
@@ -223,3 +233,55 @@ void F_function(unsigned char *data_32,unsigned char *subkey,unsigned char *resu
     F_P_box_permutation(data_s_result,result);
 }
 
+//轮函数实现部分，mode为模式选择
+void wheel_function(unsigned char *left, unsigned char *right, unsigned char *subkey, int mode){
+    unsigned char temp[4]; //临时存储
+
+    F_function(right,subkey,temp); //f函数
+
+    for (int i = 0; i < 4; ++i) {
+        temp[i] ^= left[i]; //异或运算
+    }
+    if (mode == 1){ //交换位置
+        memcpy(left,right,4);
+        memcpy(right,temp,4);
+    } else{
+        memcpy(left,temp,4);
+    }
+}
+
+//8字节的加密解密函数
+void encrypt_8Byte(const unsigned char *byte8, unsigned char subkeys[][6], unsigned char *result) {
+    unsigned char data[8]; //需要进行加密的数据
+    unsigned char left[4]; //轮函数左部分
+    unsigned char right[4]; //轮函数右部分
+    unsigned char subkey[6]; //临时存储子密钥
+
+    memcpy(data, byte8, 8); //数据复制
+    initial_permutation(data); //初始转置
+
+
+
+    for (int i = 0; i < 4; ++i) { //分割两部分
+        left[i] = data[i];
+        right[i] = data[i + 4];
+    }
+
+    for (int i = 0; i < 15; ++i) { //进行轮函数
+        memcpy(subkey,subkeys[i],6);
+        wheel_function(left, right, subkey, 1);
+    }
+
+    //最后一轮不交换位置
+    memcpy(subkey,subkeys[15],6);
+    wheel_function(left, right, subkey, 0);
+
+    //两个部分合并
+    for (int i = 0; i < 4; ++i) {
+        result[i] = left[i];
+        result[i + 4] = right[i];
+    }
+
+    //初始逆置换
+    initial_permutation_inverse(result);
+}
